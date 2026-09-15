@@ -1,0 +1,5 @@
+# Power BI / Fabric assessment — Python deps. Same set as powerbi-to-sigma.
+# Pinned to stable, long-released versions (no bleeding-edge).
+msal>=1.37.0,<1.38
+requests
+truststore>=0.10.4,<0.11
