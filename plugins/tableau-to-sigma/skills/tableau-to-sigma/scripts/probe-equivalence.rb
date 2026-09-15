@@ -76,6 +76,7 @@ require 'optparse'
 require 'securerandom'
 $LOAD_PATH.unshift File.expand_path('lib', __dir__)
 require 'equivalence_probe'
+require 'code_rep'
 
 $stdout.sync = true # progress lines interleave correctly with the FATAL block
 
@@ -231,16 +232,25 @@ end
 # return parsed CSV rows. `deadline` bounds the export poll so a stuck query
 # cannot outlive the run's total budget (bounded-exports convention).
 def sigma_sql_rows(conn_id, folder_id, sql, columns, deadline, workdir: nil)
-  spec = {
-    'name' => "_probe_equivalence_#{SecureRandom.hex(4)}",
+  wb_name = "_probe_equivalence_#{SecureRandom.hex(4)}"
+  doc = {
+    'kind' => 'workbook',
     'schemaVersion' => 1,
     'pages' => [{ 'id' => 'p1', 'name' => 'p1', 'elements' => [{
       'id' => 'probe', 'kind' => 'table', 'name' => 'Probe',
       'source' => { 'kind' => 'sql', 'connectionId' => conn_id, 'statement' => sql },
       'columns' => columns.each_with_index.map { |c, i| { 'id' => "c#{i}", 'name' => c, 'formula' => "[Custom SQL/#{c}]" } }
-    }] }]
+    }] }],
+    # live workbook code-rep requires an explicit layout (document.layout) —
+    # a single full-width tile is enough for a one-shot probe (verified live
+    # 2026-09; same requirement post-and-readback.rb / Sigma::CodeRep hits).
+    'layout' => "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" \
+                "<Page type=\"grid\" gridTemplateColumns=\"repeat(24, 1fr)\" gridTemplateRows=\"auto\" id=\"p1\">\n" \
+                "  <Element elementId=\"probe\" gridColumn=\"1 / 25\" gridRow=\"1 / 13\"/>\n</Page>"
   }
-  spec['folderId'] = folder_id if folder_id # omitted key = My Documents (API default)
+  extra = { 'name' => wb_name }
+  extra['folderId'] = folder_id if folder_id # omitted key = My Documents (API default)
+  spec = Sigma::CodeRep.wrap(doc, extra: extra)
   begin
     r = Sigma.request(:post, '/v2/workbooks/spec', body: JSON.generate(spec))
   rescue Sigma::Error => e
